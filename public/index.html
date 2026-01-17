@@ -1,0 +1,161 @@
+html<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3b82f6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>BKK Járatok</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-b from-blue-100 to-blue-50 min-h-screen">
+  <div id="app" class="p-4">
+    <div class="max-w-md mx-auto">
+      <div class="flex justify-between items-center mb-6 mt-2">
+        <h1 class="text-2xl font-bold text-gray-800">🚋 BKK Járatok</h1>
+        <button id="refreshBtn" class="p-2 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors">
+          <svg id="refreshIcon" class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div id="error" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-red-700 text-sm"></div>
+      
+      <div id="routes"></div>
+
+      <div id="lastUpdate" class="text-center text-xs text-gray-500 mt-4"></div>
+    </div>
+  </div>
+
+  <script>
+    const routes = [
+      {
+        key: 'route1',
+        name: '14 villamos',
+        stop: 'Hun utca',
+        direction: 'Lehel tér',
+        stopId: 'BKK_F02438',
+        routeId: '5014'
+      },
+      {
+        key: 'route2',
+        name: '1 villamos',
+        stop: 'Lehel utca / Róbert Károly körút',
+        direction: 'Göncz Árpád',
+        stopId: 'BKK_F02432',
+        routeId: '5001'
+      },
+      {
+        key: 'route3',
+        name: '14 villamos',
+        stop: 'Lehel utca / Róbert Károly körút',
+        direction: 'Újpest',
+        stopId: 'BKK_F02432',
+        routeId: '5014'
+      }
+    ];
+
+    let data = {};
+    let isLoading = false;
+
+    async function fetchBKKData() {
+      if (isLoading) return;
+      
+      isLoading = true;
+      document.getElementById('refreshIcon').classList.add('animate-spin');
+      document.getElementById('error').classList.add('hidden');
+
+      try {
+        for (const route of routes) {
+          const response = await fetch(`/api/bkk?stopId=${route.stopId}`);
+          const json = await response.json();
+
+          if (json.data && json.data.entry && json.data.entry.stopTimes) {
+            const filtered = json.data.entry.stopTimes
+              .filter(st => {
+                const trip = json.data.references.trips[st.tripId];
+                return trip && trip.routeId === route.routeId;
+              })
+              .map(st => {
+                const arrivalTime = st.predictedArrivalTime || st.arrivalTime;
+                const minutesUntil = Math.floor((arrivalTime - Date.now() / 1000) / 60);
+                const trip = json.data.references.trips[st.tripId];
+                return {
+                  minutes: minutesUntil,
+                  time: new Date(arrivalTime * 1000),
+                  headsign: trip.tripHeadsign
+                };
+              })
+              .filter(item => item.minutes >= 0)
+              .sort((a, b) => a.minutes - b.minutes)
+              .slice(0, 3);
+
+            data[route.key] = filtered;
+          } else {
+            data[route.key] = [];
+          }
+        }
+
+        renderRoutes();
+        updateLastUpdate();
+      } catch (error) {
+        showError('Hiba az adatok lekérésekor. Próbáld újra!');
+      } finally {
+        isLoading = false;
+        document.getElementById('refreshIcon').classList.remove('animate-spin');
+      }
+    }
+
+    function renderRoutes() {
+      const container = document.getElementById('routes');
+      container.innerHTML = routes.map(route => {
+        const times = data[route.key] || [];
+        
+        const timeSlots = Array(3).fill(null).map((_, idx) => {
+          if (times[idx]) {
+            const minutes = times[idx].minutes === 0 ? 'Most' : `${times[idx].minutes}'`;
+            const time = times[idx].time.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+            return `
+              <div class="flex-1 bg-blue-50 rounded-lg p-3 text-center">
+                <div class="text-2xl font-bold text-blue-600">${minutes}</div>
+                <div class="text-xs text-gray-600 mt-1">${time}</div>
+              </div>
+            `;
+          } else {
+            return `<div class="flex-1 bg-gray-50 rounded-lg p-3 text-center text-gray-400">-</div>`;
+          }
+        }).join('');
+
+        return `
+          <div class="bg-white rounded-lg shadow-md p-4 mb-3">
+            <div class="mb-3">
+              <h3 class="text-lg font-bold text-gray-800">${route.name}</h3>
+              <p class="text-sm text-gray-600">${route.stop}</p>
+              <p class="text-xs text-gray-500">→ ${route.direction}</p>
+            </div>
+            <div class="flex gap-2">${timeSlots}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showError(message) {
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+    }
+
+    function updateLastUpdate() {
+      const now = new Date().toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('lastUpdate').textContent = `Utolsó frissítés: ${now}`;
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', fetchBKKData);
+
+    fetchBKKData();
+    setInterval(fetchBKKData, 30000);
+  </script>
+</body>
+</html>
