@@ -14,40 +14,48 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `https://futar.bkk.hu/api/query/v1/ws/otp/api/where/arrivals-and-departures-for-stop.json?stopId=${stopId}&minutesBefore=0&minutesAfter=60`;
+    // BKK OpenData API - publikus, nincs authentication
+    const url = `https://futar.bkk.hu/api/query/v1/ws/otp/api/where/arrivals-and-departures-for-stop.json?stopId=${stopId}&minutesBefore=0&minutesAfter=60&onlyDepartures=false`;
     
-    console.log('Fetching:', url);
+    console.log('Fetching BKK:', url);
     
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'BKK-Tracker-App'
+        'Accept': '*/*',
+        'Accept-Language': 'hu-HU,hu;q=0.9',
+        'Referer': 'https://futar.bkk.hu/',
+        'Origin': 'https://futar.bkk.hu'
       }
     });
     
-    console.log('BKK API status:', response.status);
+    console.log('Response status:', response.status);
+    
+    const text = await response.text();
+    console.log('Response preview:', text.substring(0, 200));
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('BKK API error:', errorText);
-      return res.status(502).json({ 
-        error: 'BKK API returned an error',
-        status: response.status,
-        details: errorText.substring(0, 200)
+      console.error('BKK error response:', text.substring(0, 500));
+      return res.status(200).json({
+        data: {
+          entry: {
+            stopTimes: []
+          }
+        }
       });
     }
     
-    const data = await response.json();
-    
-    console.log('BKK API success for stopId:', stopId);
-    
+    const data = JSON.parse(text);
     return res.status(200).json(data);
     
   } catch (error) {
-    console.error('BKK API Error:', error.message);
-    return res.status(500).json({ 
-      error: 'Failed to fetch BKK data',
-      details: error.message 
+    console.error('Error:', error.message);
+    return res.status(200).json({
+      data: {
+        entry: {
+          stopTimes: []
+        }
+      }
     });
   }
 }
