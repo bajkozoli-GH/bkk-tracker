@@ -1,4 +1,4 @@
-html<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="hu">
 <head>
   <meta charset="UTF-8">
@@ -31,31 +31,31 @@ html<!DOCTYPE html>
 
   <script>
     const routes = [
-  {
-    key: 'route1',
-    name: '14 villamos',
-    stop: 'Hun utca',
-    direction: 'Lehel tér',
-    stopId: 'BKK_F02667',
-    routeId: 'BKK_3140'
-  },
-  {
-    key: 'route2',
-    name: '1 villamos',
-    stop: 'Lehel utca / Róbert Károly körút',
-    direction: 'Göncz Árpád',
-    stopId: 'BKK_F02631',
-    routeId: 'BKK_3010'
-  },
-  {
-    key: 'route3',
-    name: '14 villamos',
-    stop: 'Lehel utca / Róbert Károly körút',
-    direction: 'Újpest',
-    stopId: 'BKK_F02591',
-    routeId: 'BKK_3140'
-  }
-];
+      {
+        key: 'route1',
+        name: '14 villamos',
+        stop: 'Hun utca',
+        direction: 'Lehel tér',
+        stopId: 'BKK_F02667',
+        routeId: 'BKK_3140'
+      },
+      {
+        key: 'route2',
+        name: '1 villamos',
+        stop: 'Lehel utca / Róbert Károly körút',
+        direction: 'Göncz Árpád',
+        stopId: 'BKK_F02631',
+        routeId: 'BKK_3010'
+      },
+      {
+        key: 'route3',
+        name: '14 villamos',
+        stop: 'Lehel utca / Róbert Károly körút',
+        direction: 'Újpest',
+        stopId: 'BKK_F02591',
+        routeId: 'BKK_3140'
+      }
+    ];
 
     let data = {};
     let isLoading = false;
@@ -70,6 +70,11 @@ html<!DOCTYPE html>
       try {
         for (const route of routes) {
           const response = await fetch(`/api/bkk?stopId=${route.stopId}`);
+          
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
+          
           const json = await response.json();
 
           if (json.data && json.data.entry && json.data.entry.stopTimes) {
@@ -101,6 +106,7 @@ html<!DOCTYPE html>
         renderRoutes();
         updateLastUpdate();
       } catch (error) {
+        console.error('Fetch error:', error);
         showError('Hiba az adatok lekérésekor. Próbáld újra!');
       } finally {
         isLoading = false;
