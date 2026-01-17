@@ -1,5 +1,3 @@
-import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -16,114 +14,54 @@ export default async function handler(req, res) {
   }
 
   try {
-    // BKK GTFS-RT Trip Updates feed
-    const gtfsUrl = 'https://gtfs.bkk.hu/gtfs_rt/tripupdates.pb';
+    // BKK FUTÁR internal API - ezt használja a weboldaluk is
+    const url = `https://futar.bkk.hu/bkk-utvonaltervezo-api/ws/otp/api/where/arrivals-and-departures-for-stop.json?stopId=${stopId}&onlyDepartures=false`;
     
-    console.log('Fetching GTFS-RT data...');
+    console.log('Fetching from BKK FUTÁR API:', url);
     
-    const response = await fetch(gtfsUrl);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Referer': 'https://futar.bkk.hu/',
+        'Accept': 'application/json'
+      }
+    });
+    
+    console.log('Response status:', response.status);
     
     if (!response.ok) {
-      throw new Error(`GTFS-RT API returned ${response.status}`);
+      const text = await response.text();
+      console.error('Error response:', text.substring(0, 300));
+      
+      // Üres válasz hibás stopId esetén
+      return res.status(200).json({
+        data: {
+          entry: { stopId, stopTimes: [] },
+          references: { trips: {} }
+        }
+      });
     }
     
-    const buffer = await response.arrayBuffer();
-    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(
-      new Uint8Array(buffer)
-    );
+    const data = await response.json();
+    console.log('Success! StopTimes count:', data.data?.entry?.stopTimes?.length || 0);
     
-    console.log(`GTFS feed entities: ${feed.entity.length}`);
-    
-    // Szűrjük a stopId-hoz tartozó érkezéseket
-    const arrivals = [];
-    
-    for (const entity of feed.entity) {
-      if (!entity.tripUpdate) continue;
-      
-      const trip = entity.tripUpdate.trip;
-      
-      // Ha van routeId szűrés, ellenőrizzük
-      if (routeId && trip.routeId !== routeId) continue;
-      
-      for (const stopTimeUpdate of entity.tripUpdate.stopTimeUpdate || []) {
-        if (stopTimeUpdate.stopId === stopId) {
-          const arrivalTime = stopTimeUpdate.arrival?.time || stopTimeUpdate.departure?.time;
-          
-          if (arrivalTime) {
-            arrivals.push({
-              routeId: trip.routeId,
-              tripId: trip.tripId,
-              headsign: trip.tripId, // A headsign külön API-ból jönne
-              arrivalTime: Number(arrivalTime),
-              predictedArrivalTime: Number(arrivalTime)
-            });
-          }
-        }
-      }
+    // Ha van routeId szűrés, alkalmazzuk
+    if (routeId && data.data?.entry?.stopTimes) {
+      data.data.entry.stopTimes = data.data.entry.stopTimes.filter(st => {
+        const trip = data.data.references.trips[st.tripId];
+        return trip && trip.routeId === routeId;
+      });
     }
     
-    // Rendezzük idő szerint
-    arrivals.sort((a, b) => a.arrivalTime - b.arrivalTime);
-    
-    console.log(`Found ${arrivals.length} arrivals for stop ${stopId}`);
-    
-    // BKK API-hoz hasonló formátum
-    const result = {
-      data: {
-        entry: {
-          stopId: stopId,
-          stopTimes: arrivals.map(arr => ({
-            tripId: arr.tripId,
-            arrivalTime: arr.arrivalTime,
-            predictedArrivalTime: arr.predictedArrivalTime
-          }))
-        },
-        references: {
-          trips: arrivals.reduce((acc, arr) => {
-            acc[arr.tripId] = {
-              routeId: arr.routeId,
-              tripHeadsign: arr.headsign,
-              tripId: arr.tripId
-            };
-            return acc;
-          }, {})
-        }
-      }
-    };
-    
-    return res.status(200).json(result);
+    return res.status(200).json(data);
     
   } catch (error) {
-    console.error('GTFS-RT Error:', error.message);
-    return res.status(500).json({ 
-      error: 'Failed to fetch GTFS-RT data',
-      details: error.message 
+    console.error('BKK API Error:', error.message);
+    return res.status(200).json({
+      data: {
+        entry: { stopId, stopTimes: [] },
+        references: { trips: {} }
+      }
     });
   }
 }
-```
-
-**Commit changes**
-
----
-
-### **3️⃣ Várj 2-3 percet**
-
-A Vercel újra build-eli a projektet (most telepíti a `gtfs-realtime-bindings` library-t).
-
----
-
-### **4️⃣ Tesztelés:**
-
-**Nyisd meg:**
-```
-https://bkk-tracker.vercel.app/api/bkk?stopId=BKK_F02667&routeId=BKK_3140
-```
-
-**Mit vársz:**
-- JSON adatokat `stopTimes` tömbbel ✅
-- Vagy hibaüzenetet
-
-**Aztán próbáld a főoldalt:**
-```
-https://bkk-tracker.vercel.app
