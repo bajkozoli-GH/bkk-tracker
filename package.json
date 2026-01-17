@@ -1,8 +1,4 @@
 {
   "name": "bkk-tracker",
-  "version": "1.0.0",
-  "type": "module",
-  "dependencies": {
-    "node-fetch": "^3.3.0"
-  }
+  "version": "1.0.0"
 }
